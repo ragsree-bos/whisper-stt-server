@@ -1,32 +1,21 @@
 from flask import Flask, request, jsonify
-import whisper
-import tempfile
-import os
+import subprocess
 
 app = Flask(__name__)
-model = whisper.load_model("tiny")  # or "tiny" for faster performance
 
-@app.route("/")
-def home():
-    return "✅ Whisper STT Server is running"
+@app.route("/wake", methods=["POST"])
+def wake():
+    audio = request.files["audio"]
+    audio.save("wake.wav")
+    result = subprocess.run(["./main", "-m", "models/ggml-base.en.bin", "-f", "wake.wav", "-otxt"], capture_output=True)
+    text = open("wake.wav.txt").read()
+    return jsonify({"text": text})
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
-    if "audio" not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
+    audio = request.files["audio"]
+    audio.save("input.wav")
+    result = subprocess.run(["./main", "-m", "models/ggml-base.en.bin", "-f", "input.wav", "-otxt"], capture_output=True)
+    text = open("input.wav.txt").read()
+    return jsonify({"text": text})
 
-    audio_file = request.files["audio"]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        audio_path = tmp.name
-        audio_file.save(audio_path)
-
-    try:
-        result = model.transcribe(audio_path)
-        return jsonify({"text": result["text"]})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        os.remove(audio_path)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
